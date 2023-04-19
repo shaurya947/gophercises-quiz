@@ -35,11 +35,10 @@ func main() {
 	fmt.Printf("You will have %d seconds to finish the quiz. Press ENTER to begin.", *timeLimitPtr)
 	fmt.Scanln()
 
-	correct := 0
-	go presentQuiz(problems, &correct)
+	numCorrectChan := make(chan int)
+	go presentQuiz(problems, numCorrectChan, *timeLimitPtr)
 
-	time.Sleep(time.Duration(*timeLimitPtr) * time.Second)
-	fmt.Printf("\nYou scored %d out of %d.\n", correct, len(problems))
+	fmt.Printf("You scored %d out of %d.\n", <-numCorrectChan, len(problems))
 }
 
 func parseCSVRecords(records [][]string) []problem {
@@ -50,14 +49,31 @@ func parseCSVRecords(records [][]string) []problem {
 	return problems
 }
 
-func presentQuiz(problems []problem, numCorrectPointer *int) {
-	var response string
+func presentQuiz(problems []problem, numCorrectChan chan int, timeLimit int) {
+	timer := time.NewTimer(time.Duration(timeLimit) * time.Second)
+
+	numCorrect := 0
+	inputChan := make(chan string)
+loop:
 	for index, problem := range problems {
 		fmt.Printf("Problem #%d: %s = ", index+1, problem.question)
-		fmt.Scanln(&response)
-
-		if strings.EqualFold(problem.answer, strings.TrimSpace(response)) {
-			(*numCorrectPointer)++
+		go getAnswerInput(inputChan)
+		select {
+		case <-timer.C:
+			fmt.Println()
+			break loop
+		case input := <-inputChan:
+			if strings.EqualFold(problem.answer, strings.TrimSpace(input)) {
+				numCorrect++
+			}
 		}
 	}
+
+	numCorrectChan <- numCorrect
+}
+
+func getAnswerInput(inputChan chan string) {
+	var input string
+	fmt.Scanln(&input)
+	inputChan <- input
 }
